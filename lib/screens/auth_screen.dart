@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 class AuthScreen extends StatefulWidget {
@@ -8,18 +9,38 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen> {
-  final _formkey = GlobalKey<FormState>();
+  final _formKey = GlobalKey<FormState>();
   var _enteredEmail = "";
   var _enteredPassword = "";
 
   var _isLogin = true;
 
-  void _submit() {
-    final isValid = _formkey.currentState!.validate();
+  Future<void> _submit() async {
+    final isValid = _formKey.currentState!.validate();
     if (isValid) {
-      _formkey.currentState!.save();
+      _formKey.currentState!.save();
+
       print(_enteredEmail);
       print(_enteredPassword);
+    }
+    if (_isLogin) {
+      //login users.
+    } else {
+      try {
+        final credential =
+            await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: _enteredEmail,
+          password: _enteredPassword,
+        );
+      } on FirebaseAuthException catch (e) {
+        if (e.code == 'weak-password') {
+          print('The password provided is too weak.');
+        } else if (e.code == 'email-already-in-use') {
+          print('The account already exists for that email.');
+        }
+      } catch (e) {
+        print(e);
+      }
     }
   }
 
@@ -46,7 +67,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     child: Padding(
                       padding: const EdgeInsets.all(20.0),
                       child: Form(
-                        key: _formkey,
+                        key: _formKey,
                         child: Column(
                           children: [
                             TextFormField(
@@ -71,7 +92,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                 if (value == null ||
                                     value.trim().isEmpty ||
                                     !value.contains("@")) {
-                                  return "please enter a valid enail address";
+                                  return "please enter a valid email address";
                                 } else {
                                   return null;
                                 }
