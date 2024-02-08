@@ -1,4 +1,9 @@
+import 'dart:io';
+
+import 'package:chat_app/widgets/user_image_picker.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 
 class AuthScreen extends StatefulWidget {
@@ -10,37 +15,78 @@ class AuthScreen extends StatefulWidget {
 
 class _AuthScreenState extends State<AuthScreen> {
   final _formKey = GlobalKey<FormState>();
+  var _userName = "";
   var _enteredEmail = "";
   var _enteredPassword = "";
+  File? _selectedImage;
 
   var _isLogin = true;
+  var _isAuthenticated = false;
 
   Future<void> _submit() async {
     final isValid = _formKey.currentState!.validate();
-    if (isValid) {
-      _formKey.currentState!.save();
 
-      print(_enteredEmail);
-      print(_enteredPassword);
-    }
-    if (_isLogin) {
-      //login users.
+    if (_isLogin.toString().trim().isEmpty ||
+        isValid.toString().trim().isEmpty) {
+      setState(() {
+        _isAuthenticated = false;
+      });
     } else {
+      _formKey.currentState!.save();
+      setState(() {
+        _isAuthenticated = true;
+      });
       try {
-        final credential =
-            await FirebaseAuth.instance.createUserWithEmailAndPassword(
-          email: _enteredEmail,
-          password: _enteredPassword,
-        );
+        if (_isLogin == true) {
+          /////////////////////this is for signIn/////////////////
+          final credential = await FirebaseAuth.instance
+              .signInWithEmailAndPassword(
+                  email: _enteredEmail, password: _enteredPassword);
+        } else {
+          ////////////////////this is for createUser////////////////
+          final credential =
+              await FirebaseAuth.instance.createUserWithEmailAndPassword(
+            email: _enteredEmail,
+            password: _enteredPassword,
+          );
+          ///////////////////this is for storage////////////////////////
+          final storageRef = FirebaseStorage.instance
+              .ref()
+              .child("user-Image")
+              .child("${credential.user!.uid}.jpg");
+          await storageRef.putFile(_selectedImage!);
+          final imageUrl = await storageRef.getDownloadURL();
+          //////////////this is for cloud_storage/////////////////
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(credential.user!.uid)
+              .set({
+            'userName': _userName,
+            'email': _enteredEmail,
+            'password': _enteredPassword,
+            'imageUrl': imageUrl
+          });
+        }
       } on FirebaseAuthException catch (e) {
         if (e.code == 'weak-password') {
           print('The password provided is too weak.');
         } else if (e.code == 'email-already-in-use') {
           print('The account already exists for that email.');
         }
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.message ?? 'Authentication failed'),
+          ),
+        );
       } catch (e) {
         print(e);
       }
+    }
+    if (mounted) {
+      setState(() {
+        _isAuthenticated = false;
+      });
     }
   }
 
@@ -70,6 +116,43 @@ class _AuthScreenState extends State<AuthScreen> {
                         key: _formKey,
                         child: Column(
                           children: [
+                            if (_isLogin == false)
+                              UserImagePicker(
+                                onPickImage: (pickedImage) {
+                                  _selectedImage = pickedImage;
+                                },
+                              ),
+                            const SizedBox(
+                              height: 10,
+                            ),
+                            if (!_isLogin)
+                              TextFormField(
+                                decoration: InputDecoration(
+                                  labelText: "User Name",
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(25),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(25),
+                                      borderSide: const BorderSide(
+                                          color: Colors.blueAccent)),
+                                ),
+                                validator: (value) {
+                                  if (value == null ||
+                                      value.trim().isEmpty ||
+                                      value.length < 5) {
+                                    return "please enter a valid user name";
+                                  } else {
+                                    return null;
+                                  }
+                                },
+                                onSaved: (newValue) {
+                                  _userName = newValue!;
+                                },
+                              ),
+                            const SizedBox(
+                              height: 10,
+                            ),
                             TextFormField(
                               decoration: InputDecoration(
                                 labelText: "Email Address",
@@ -134,10 +217,13 @@ class _AuthScreenState extends State<AuthScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                ElevatedButton(
-                                  onPressed: _submit,
-                                  child: Text(_isLogin ? "Login" : "SignUp"),
-                                ),
+                                if (_isAuthenticated)
+                                  const CircularProgressIndicator(),
+                                if (!_isAuthenticated)
+                                  ElevatedButton(
+                                    onPressed: _submit,
+                                    child: Text(_isLogin ? "Login" : "SignUp"),
+                                  ),
                                 const SizedBox(
                                   width: 10,
                                 ),
